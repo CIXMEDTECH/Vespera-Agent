@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -13,6 +14,22 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 
 use super::LogLine;
+
+/// PID of the running `journalctl`, 0 when none.
+static CHILD: AtomicU32 = AtomicU32::new(0);
+
+/// Kill and reap the `journalctl` child. Used right before a self-update re-exec.
+#[cfg(unix)]
+pub fn kill_child() {
+    let pid = CHILD.swap(0, Ordering::SeqCst) as libc::pid_t;
+    if pid > 0 {
+        // SAFETY: plain syscalls on a PID we spawned and have not reaped yet.
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+            libc::waitpid(pid, std::ptr::null_mut(), 0);
+        }
+    }
+}
 
 pub fn available() -> bool {
     Path::new("/run/systemd/journal/socket").exists() && which("journalctl").is_some()
@@ -52,6 +69,7 @@ pub async fn run(state_dir: PathBuf, tx: mpsc::Sender<LogLine>) {
 
         match cmd.spawn() {
             Ok(mut child) => {
+                CHILD.store(child.id().unwrap_or(0), Ordering::SeqCst);
                 tracing::info!(resume = cursor.is_some(), "ssh monitor: following journald");
                 let stdout = child.stdout.take().expect("piped stdout");
                 let mut lines = BufReader::new(stdout).lines();
@@ -80,6 +98,7 @@ pub async fn run(state_dir: PathBuf, tx: mpsc::Sender<LogLine>) {
                 if let Some(c) = &last_cursor {
                     let _ = std::fs::write(&cursor_path, c);
                 }
+                CHILD.store(0, Ordering::SeqCst);
                 let _ = child.kill().await;
                 tracing::warn!("ssh monitor: journalctl exited, restarting in 10s");
             }

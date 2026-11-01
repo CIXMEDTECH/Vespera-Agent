@@ -6,7 +6,7 @@
 - 直接读取 `/proc`，复用文件句柄和缓冲区，采集过程中几乎不分配内存；运行时为单线程 tokio。
 - 支持的架构：`amd64`、`arm64`、`armv7`、`386`、`riscv64`。
 
-> 当前为 **beta** 版本（`0.1.0-beta.2`）。
+> 当前为 **beta** 版本（`0.1.0-beta.3`）。
 
 ## 安装
 
@@ -71,6 +71,7 @@ systemd 下的日志由 journald 管理，会随 journald 自身的轮转策略�
 | `--ipv4` / `--ipv6` | `VESPERA_IPV4/6` | 自动 | 手动指定上报的 IP |
 | `--no-ip-lookup` | `VESPERA_NO_IP_LOOKUP` | — | 不探测公网 IP |
 | `--insecure` | `VESPERA_INSECURE` | — | 跳过 TLS 证书校验 |
+| `--log` | `VESPERA_LOG` | `info` | 日志级别：`error`、`warn`、`info`、`debug`、`trace` |
 
 ## SSH 登录监控
 

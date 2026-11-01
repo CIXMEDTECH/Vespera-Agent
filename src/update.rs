@@ -70,13 +70,23 @@ pub fn install(bytes: &[u8], sha256_hex: &str, exe: &Path) -> Result<(), String>
     let dir = exe.parent().ok_or("executable has no parent directory")?;
     let tmp = dir.join(".vespera-agent.new");
     let result = (|| {
-        std::fs::write(&tmp, bytes)?;
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+            f.set_permissions(std::fs::Permissions::from_mode(0o755))?;
         }
-        std::fs::rename(&tmp, exe)
+        // Flush the data before the rename so a power loss cannot leave an
+        // empty or partial binary in place of the old one.
+        f.sync_all()?;
+        drop(f);
+        std::fs::rename(&tmp, exe)?;
+        if let Ok(d) = std::fs::File::open(dir) {
+            let _ = d.sync_all();
+        }
+        Ok::<_, std::io::Error>(())
     })();
     result.map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
@@ -95,6 +105,9 @@ pub fn restart() -> String {
     use std::os::unix::process::CommandExt;
     match exe() {
         Ok(path) => {
+            // exec keeps our PID, so a child left running would become a
+            // zombie the new image never reaps.
+            crate::ssh::journald::kill_child();
             let err = std::process::Command::new(path).args(std::env::args_os().skip(1)).exec();
             format!("re-exec failed: {err}")
         }

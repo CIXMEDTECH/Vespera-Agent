@@ -30,6 +30,12 @@ use crate::update;
 
 const HEARTBEAT: Duration = Duration::from_secs(10);
 const READ_TIMEOUT: Duration = Duration::from_secs(35);
+/// Whole connect: DNS, TCP, TLS and the WebSocket upgrade. Without it a peer
+/// that accepts TCP but never answers leaves the agent stuck with no log.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// A write that cannot drain (dead link, full send buffer) ends the session
+/// instead of blocking the loop until the kernel gives up on retransmits.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(15);
 const INFO_REFRESH: Duration = Duration::from_secs(600);
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
@@ -91,9 +97,12 @@ impl Agent {
     }
 
     async fn session(&mut self) -> Result<End> {
-        let mut ws = match connect(&self.cfg).await {
-            Ok(ws) => ws,
-            Err(e) => {
+        let mut ws = match tokio::time::timeout(CONNECT_TIMEOUT, connect(&self.cfg)).await {
+            Err(_) => {
+                bail!("connect timeout after {}s (TLS or WebSocket handshake stalled)", CONNECT_TIMEOUT.as_secs())
+            }
+            Ok(Ok(ws)) => ws,
+            Ok(Err(e)) => {
                 if let Some(tungstenite::Error::Http(resp)) = e.downcast_ref::<tungstenite::Error>()
                     && resp.status() == 401
                 {
@@ -181,7 +190,7 @@ impl Agent {
                             tracing::info!(%version, "update installed, restarting");
                             let r = UpgradeResult { version, ok: true, message: "installed, restarting".into() };
                             send(&mut ws, &AgentMsg::UpgradeResult(r)).await?;
-                            let _ = ws.close(None).await;
+                            let _ = tokio::time::timeout(WRITE_TIMEOUT, ws.close(None)).await;
                             let err = update::restart();
                             tracing::error!("{err}");
                             return Ok(End::Retry(err));
@@ -196,7 +205,7 @@ impl Agent {
                     if last_rx.elapsed() > READ_TIMEOUT {
                         return Ok(End::Retry("read timeout".into()));
                     }
-                    ws.send(Message::Ping(Vec::new().into())).await?;
+                    send_frame(&mut ws, Message::Ping(Vec::new().into())).await?;
                 }
                 msg = ws.next() => {
                     let Some(msg) = msg else { return Ok(End::Retry("closed by panel".into())) };
@@ -285,12 +294,17 @@ fn error_end(code: ErrorCode, msg: String) -> End {
 type Ws = WebSocketStream<Stream>;
 
 async fn send(ws: &mut Ws, msg: &AgentMsg) -> Result<()> {
-    ws.send(Message::Binary(vespera_proto::encode(msg).into())).await?;
+    send_frame(ws, Message::Binary(vespera_proto::encode(msg).into())).await
+}
+
+async fn send_frame(ws: &mut Ws, msg: Message) -> Result<()> {
+    tokio::time::timeout(WRITE_TIMEOUT, ws.send(msg)).await.map_err(|_| anyhow!("write timeout"))??;
     Ok(())
 }
 
 async fn connect(cfg: &Config) -> Result<Ws> {
     let url = cfg.ws_url();
+    tracing::debug!(%url, "connecting to panel");
     let secure = url.starts_with("wss://");
     let parsed = http::parse_url(&url.replacen("wss://", "https://", 1).replacen("ws://", "http://", 1))
         .ok_or_else(|| anyhow!("invalid endpoint {url}"))?;

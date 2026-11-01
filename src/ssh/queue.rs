@@ -10,6 +10,8 @@ use std::path::{Path, PathBuf};
 
 use vespera_proto::SshEvent;
 
+const MAX_PENDING: usize = 10_000;
+
 pub struct SshQueue {
     queue_path: PathBuf,
     seq_path: PathBuf,
@@ -24,14 +26,22 @@ impl SshQueue {
         let queue_path = state_dir.join("ssh-queue.jsonl");
         let seq_path = state_dir.join("ssh-seq");
         let saved_seq = fs::read_to_string(&seq_path).ok().and_then(|s| s.trim().parse::<u64>().ok());
-        let pending: VecDeque<SshEvent> = fs::read_to_string(&queue_path)
+        let mut pending: VecDeque<SshEvent> = fs::read_to_string(&queue_path)
             .unwrap_or_default()
             .lines()
             .filter_map(|l| serde_json::from_str(l).ok())
             .collect();
         let max_pending = pending.iter().map(|e| e.seq).max().unwrap_or(0);
         let next_seq = saved_seq.unwrap_or(1).max(max_pending + 1);
-        Self { queue_path, seq_path, next_seq, pending, fresh: saved_seq.is_none() }
+        let trimmed = pending.len() > MAX_PENDING;
+        while pending.len() > MAX_PENDING {
+            pending.pop_front();
+        }
+        let q = Self { queue_path, seq_path, next_seq, pending, fresh: saved_seq.is_none() };
+        if trimmed {
+            q.rewrite();
+        }
+        q
     }
 
     pub fn push(&mut self, mut ev: SshEvent) -> u64 {
@@ -46,7 +56,7 @@ impl SshQueue {
         let seq = ev.seq;
         self.pending.push_back(ev);
         // Bound memory/disk if the server is unreachable for a long time.
-        while self.pending.len() > 10_000 {
+        while self.pending.len() > MAX_PENDING {
             self.pending.pop_front();
         }
         seq

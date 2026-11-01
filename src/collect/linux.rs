@@ -10,8 +10,17 @@ use super::{Filters, now_ms, sysinfo};
 const MOUNT_REFRESH: Duration = Duration::from_secs(60);
 const DISK_REFRESH: Duration = Duration::from_secs(10);
 
+/// Host facts that cannot change while the agent runs.
+struct Host {
+    cpu_name: String,
+    os: String,
+    kernel: String,
+    virtualization: String,
+}
+
 pub struct Collector {
     filters: Filters,
+    host: Host,
     stat: ProcFile,
     meminfo: ProcFile,
     netdev: ProcFile,
@@ -31,6 +40,12 @@ impl Collector {
     pub fn new(filters: Filters) -> Result<Self> {
         let mut c = Self {
             filters,
+            host: Host {
+                cpu_name: sysinfo::cpu_name(),
+                os: sysinfo::os_name(),
+                kernel: sysinfo::kernel_version(),
+                virtualization: sysinfo::virtualization(),
+            },
             stat: ProcFile::open("/proc/stat").context("open /proc/stat")?,
             meminfo: ProcFile::open("/proc/meminfo").context("open /proc/meminfo")?,
             netdev: ProcFile::open("/proc/net/dev").context("open /proc/net/dev")?,
@@ -55,12 +70,12 @@ impl Collector {
         let mem = self.meminfo.read().map(procfs::parse_meminfo).unwrap_or_default();
         let (_, disk_total) = self.disk();
         BasicInfo {
-            cpu_name: sysinfo::cpu_name(),
+            cpu_name: self.host.cpu_name.clone(),
             cpu_cores: sysinfo::cpu_cores(),
             arch: std::env::consts::ARCH.to_string(),
-            os: sysinfo::os_name(),
-            kernel: sysinfo::kernel_version(),
-            virtualization: sysinfo::virtualization(),
+            os: self.host.os.clone(),
+            kernel: self.host.kernel.clone(),
+            virtualization: self.host.virtualization.clone(),
             mem_total: mem.total,
             swap_total: mem.swap_total,
             disk_total,
