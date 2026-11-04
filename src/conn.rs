@@ -18,13 +18,14 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::{self, Message};
 use vespera_proto::{
-    AgentMsg, BasicInfo, ErrorCode, FEATURE_UPGRADE, Hello, PROTO_VERSION, PingResult, PingTask, ServerMsg,
-    SshFailSummary, UpgradeOrder, UpgradeResult,
+    AgentMsg, BasicInfo, ErrorCode, FEATURE_PROBE, FEATURE_UPGRADE, Hello, PROTO_VERSION, PingResult, PingTask,
+    ProbeResult, ServerMsg, SshFailSummary, UpgradeOrder, UpgradeResult,
 };
 
 use crate::collect::Collector;
 use crate::config::Config;
 use crate::net::{self, http, tls};
+use crate::ping;
 use crate::ssh::SshShared;
 use crate::update;
 
@@ -51,6 +52,10 @@ pub struct Agent {
     pub upgrade_tx: mpsc::Sender<(String, Result<(), String>)>,
     pub upgrade_rx: mpsc::Receiver<(String, Result<(), String>)>,
     pub upgrading: bool,
+    pub icmp: ping::Icmp,
+    /// Finished one-off tests, on their way back to the panel.
+    pub probe_tx: mpsc::Sender<ProbeResult>,
+    pub probe_rx: mpsc::Receiver<ProbeResult>,
 }
 
 enum End {
@@ -183,6 +188,9 @@ impl Agent {
                     ssh_sent = 0;
                     self.flush_ssh(&mut ws, &mut ssh_sent).await?;
                 }
+                Some(r) = self.probe_rx.recv() => {
+                    send(&mut ws, &AgentMsg::ProbeResult(r)).await?;
+                }
                 Some((version, result)) = self.upgrade_rx.recv() => {
                     self.upgrading = false;
                     match result {
@@ -223,13 +231,19 @@ impl Agent {
                             }
                             Ok(ServerMsg::Error { code, msg }) => return Ok(error_end(code, msg)),
                             Ok(ServerMsg::Features(_)) => {
-                                let mut ours = Vec::new();
+                                let mut ours = vec![FEATURE_PROBE.to_string()];
                                 if !self.cfg.disable_auto_update {
                                     ours.push(FEATURE_UPGRADE.to_string());
                                 }
                                 send(&mut ws, &AgentMsg::Features(ours)).await?;
                             }
                             Ok(ServerMsg::Upgrade(order)) => self.start_upgrade(order, &mut ws).await?,
+                            Ok(ServerMsg::Probe(order)) => {
+                                let (icmp, tx) = (self.icmp.clone(), self.probe_tx.clone());
+                                tokio::spawn(async move {
+                                    let _ = tx.send(ping::probe_once(order, &icmp).await).await;
+                                });
+                            }
                             Ok(ServerMsg::Welcome(_)) => {}
                             // Frames from a newer panel that this agent does not know yet.
                             Err(e) => tracing::debug!("undecodable frame: {e}"),

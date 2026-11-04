@@ -69,14 +69,29 @@ async fn run(mut cfg: Config) -> Result<()> {
 
     let (tasks_tx, tasks_rx) = watch::channel(Vec::new());
     let (ping_tx, ping_rx) = mpsc::channel(1024);
-    tokio::spawn(ping::run(tasks_rx, ping_tx));
+    let icmp = ping::Icmp::new();
+    tokio::spawn(ping::run(tasks_rx, ping_tx, icmp.clone()));
 
     let (fail_tx, fail_rx) = mpsc::channel(64);
     let ssh = if cfg.disable_ssh { None } else { ssh::spawn(&cfg.ssh_source, &cfg.state_dir, fail_tx) };
 
     let (upgrade_tx, upgrade_rx) = mpsc::channel(4);
-    let agent =
-        conn::Agent { cfg, collector, ips, tasks_tx, ping_rx, ssh, fail_rx, upgrade_tx, upgrade_rx, upgrading: false };
+    let (probe_tx, probe_rx) = mpsc::channel(16);
+    let agent = conn::Agent {
+        cfg,
+        collector,
+        ips,
+        tasks_tx,
+        ping_rx,
+        ssh,
+        fail_rx,
+        upgrade_tx,
+        upgrade_rx,
+        upgrading: false,
+        icmp,
+        probe_tx,
+        probe_rx,
+    };
     tokio::select! {
         _ = agent.run() => {}
         _ = shutdown_signal() => tracing::info!("shutting down"),

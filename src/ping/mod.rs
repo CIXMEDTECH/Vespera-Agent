@@ -3,18 +3,19 @@
 
 mod icmp;
 
+pub use icmp::Icmp;
+
 use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
-use vespera_proto::{PingKind, PingResult, PingTask};
+use vespera_proto::{PingKind, PingResult, PingTask, ProbeOrder, ProbeResult};
 
 use crate::net::{self, http};
 
 const TIMEOUT: Duration = Duration::from_secs(3);
 
-pub async fn run(mut tasks_rx: watch::Receiver<Vec<PingTask>>, out: mpsc::Sender<PingResult>) {
-    let icmp = icmp::Icmp::new();
+pub async fn run(mut tasks_rx: watch::Receiver<Vec<PingTask>>, out: mpsc::Sender<PingResult>, icmp: Icmp) {
     loop {
         let tasks = tasks_rx.borrow_and_update().clone();
         let mut set = JoinSet::new();
@@ -44,6 +45,12 @@ async fn task_loop(task: PingTask, out: mpsc::Sender<PingResult>, icmp: icmp::Ic
             return;
         }
     }
+}
+
+/// Run a one-off test ordered by the panel.
+pub async fn probe_once(order: ProbeOrder, icmp: &Icmp) -> ProbeResult {
+    let task = PingTask { id: 0, kind: order.kind, target: order.target, interval_s: 0 };
+    ProbeResult { id: order.id, rtt_us: probe(&task, icmp, fastrand::u16(..)).await }
 }
 
 pub async fn probe(task: &PingTask, icmp: &icmp::Icmp, seq: u16) -> Option<u32> {

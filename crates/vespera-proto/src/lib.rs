@@ -31,6 +31,10 @@ pub const AGENT_WS_PATH: &str = "/api/agent/ws";
 /// does not announce it.
 pub const FEATURE_UPGRADE: &str = "upgrade";
 
+/// One-off latency test: server may send [`ServerMsg::Probe`], agent answers
+/// with [`AgentMsg::ProbeResult`].
+pub const FEATURE_PROBE: &str = "probe";
+
 // ---------------------------------------------------------------------------
 // Agent -> Server
 // ---------------------------------------------------------------------------
@@ -47,6 +51,8 @@ pub enum AgentMsg {
     Features(Vec<String>),
     /// Outcome of an [`ServerMsg::Upgrade`] order.
     UpgradeResult(UpgradeResult),
+    /// Outcome of a [`ServerMsg::Probe`] order.
+    ProbeResult(ProbeResult),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +165,8 @@ pub enum ServerMsg {
     Features(Vec<String>),
     /// Ask the agent to replace itself with another release.
     Upgrade(UpgradeOrder),
+    /// Measure a target once, outside the scheduled ping tasks.
+    Probe(ProbeOrder),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -177,6 +185,22 @@ pub struct UpgradeResult {
     pub version: String,
     pub ok: bool,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProbeOrder {
+    /// Echoed in the [`ProbeResult`].
+    pub id: u64,
+    pub kind: PingKind,
+    /// icmp: host; tcp: host:port; http: URL.
+    pub target: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ProbeResult {
+    pub id: u64,
+    /// Round trip in microseconds; `None` means lost / failed.
+    pub rtt_us: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -313,6 +337,12 @@ mod tests {
         let back: ServerMsg = decode(&encode(&m)).unwrap();
         assert_eq!(format!("{m:?}"), format!("{back:?}"));
         let a = AgentMsg::UpgradeResult(UpgradeResult { version: "x".into(), ok: false, message: "m".into() });
+        let back: AgentMsg = decode(&encode(&a)).unwrap();
+        assert_eq!(format!("{a:?}"), format!("{back:?}"));
+        let m = ServerMsg::Probe(ProbeOrder { id: 7, kind: PingKind::Http, target: "https://a.b".into() });
+        let back: ServerMsg = decode(&encode(&m)).unwrap();
+        assert_eq!(format!("{m:?}"), format!("{back:?}"));
+        let a = AgentMsg::ProbeResult(ProbeResult { id: 7, rtt_us: Some(1500) });
         let back: AgentMsg = decode(&encode(&a)).unwrap();
         assert_eq!(format!("{a:?}"), format!("{back:?}"));
     }
