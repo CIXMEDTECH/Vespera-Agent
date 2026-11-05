@@ -1,19 +1,19 @@
 # Vespera Agent
 
-[Vespera](https://github.com/cidmex/Vespera) 探针的被控端，负责采集 Linux 服务器状态、执行延迟探测，并监控 SSH 登录。
+[Vespera](https://github.com/CIXMEDTECH/Vespera) 探针的被控端，负责采集 Linux 服务器状态、执行延迟探测，并监控 SSH 登录。
 
 - 单个 musl 静态二进制，约 3 MB，无运行时依赖。
 - 直接读取 `/proc`，复用文件句柄和缓冲区，采集过程中几乎不分配内存；运行时为单线程 tokio。
 - 支持的架构：`amd64`、`arm64`、`armv7`、`386`、`riscv64`。
 
-> 当前为 **beta** 版本（`0.1.0-beta.4`）。
+> 当前为 **beta** 版本（`0.1.0-beta.4.1`）。
 
 ## 安装
 
 在面板的 **管理 → 节点 → 安装 Agent** 中复制命令，到服务器上以 root 运行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cidmex/Vespera-Agent/main/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/CIXMEDTECH/Vespera-Agent/main/scripts/install.sh \
   | sudo bash -s -- -e https://status.example.com -t <token>
 ```
 
@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/cidmex/Vespera-Agent/main/scripts/i
 用安装脚本卸载，会停止并移除服务，删除程序、配置、状态和日志：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/cidmex/Vespera-Agent/main/scripts/install.sh | sudo bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/CIXMEDTECH/Vespera-Agent/main/scripts/install.sh | sudo bash -s -- --uninstall
 ```
 
 无法访问 GitHub 时，可以直接执行下面的命令，不需要下载任何东西。面板的“安装命令”弹窗里也有这两条命令。

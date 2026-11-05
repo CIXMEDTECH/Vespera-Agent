@@ -3,9 +3,9 @@ resolver = "3"
 members = [".", "crates/vespera-proto"]
 
 [workspace.package]
-version = "0.1.0-beta.4"
+version = "0.1.0-beta.4.1"
 edition = "2024"
-repository = "https://github.com/cidmex/Vespera-Agent"
+repository = "https://github.com/CIXMEDTECH/Vespera-Agent"
 
 [package]
 name = "vespera-agent"

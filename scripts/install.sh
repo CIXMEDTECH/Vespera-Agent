@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Vespera agent installer / upgrader / uninstaller (Linux, systemd or OpenRC).
 #
-#   curl -fsSL https://raw.githubusercontent.com/cidmex/Vespera-Agent/main/scripts/install.sh \
+#   curl -fsSL https://raw.githubusercontent.com/CIXMEDTECH/Vespera-Agent/main/scripts/install.sh \
 #     | sudo bash -s -- -e https://status.example.com -t <token>
 #
 # Installer options (everything else is passed to the agent):
@@ -12,7 +12,7 @@
 # Useful agent flags: --disable-ssh, --disable-auto-update, --interval <secs>
 set -euo pipefail
 
-REPO="cidmex/Vespera-Agent"
+REPO="CIXMEDTECH/Vespera-Agent"
 NAME="vespera-agent"
 INSTALL_DIR="/opt/vespera-agent"
 STATE_DIR="/var/lib/vespera-agent"

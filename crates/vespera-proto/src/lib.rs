@@ -174,7 +174,7 @@ pub struct UpgradeOrder {
     /// Release version without the leading `v`, e.g. `0.1.0-beta.2`.
     pub version: String,
     /// Download directory; the agent appends its asset name, e.g.
-    /// `https://github.com/cidmex/Vespera-Agent/releases/download/v0.1.0-beta.2`.
+    /// `https://github.com/CIXMEDTECH/Vespera-Agent/releases/download/v0.1.0-beta.2`.
     pub base_url: String,
     /// `(asset name, sha256 hex)` for every published binary.
     pub checksums: Vec<(String, String)>,

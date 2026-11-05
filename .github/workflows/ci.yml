@@ -8,9 +8,12 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# This repository is public and the jobs run on a self-hosted runner, so pull
+# requests from forks are skipped: their code must not run on that machine.
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -23,14 +26,20 @@ jobs:
       - run: bash -n scripts/install.sh
 
   musl:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
-      - run: pip install ziglang==0.17.0 cargo-zigbuild
+      # A venv: system Python refuses pip installs, and the runner keeps its state between jobs.
+      - name: Install zig and cargo-zigbuild
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zig"
+          "$RUNNER_TEMP/zig/bin/pip" install ziglang==0.17.0 cargo-zigbuild
+          echo "$RUNNER_TEMP/zig/bin" >> "$GITHUB_PATH"
       - run: cargo zigbuild --release --target x86_64-unknown-linux-musl
       - name: Binary is static and small
         run: |

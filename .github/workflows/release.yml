@@ -17,7 +17,7 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       version: ${{ steps.v.outputs.version }}
       prerelease: ${{ steps.v.outputs.prerelease }}
@@ -38,7 +38,7 @@ jobs:
 
   build:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     strategy:
       fail-fast: true
       matrix:
@@ -56,8 +56,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      # A venv: system Python refuses pip installs, and the runner keeps its state between jobs.
       - name: Install zig and cargo-zigbuild
-        run: pip install ziglang==0.17.0 cargo-zigbuild
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zig"
+          "$RUNNER_TEMP/zig/bin/pip" install ziglang==0.17.0 cargo-zigbuild
+          echo "$RUNNER_TEMP/zig/bin" >> "$GITHUB_PATH"
       - name: Build
         env:
           VESPERA_GIT_SHA: ${{ github.sha }}
@@ -73,7 +77,7 @@ jobs:
 
   release:
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -93,5 +97,5 @@ jobs:
           body: |
             Install or upgrade on a Linux server (the panel's **Install agent** dialog generates this for you):
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/cidmex/Vespera-Agent/main/scripts/install.sh | sudo bash -s -- --version v${{ needs.version.outputs.version }} -e <panel-url> -t <token>
+            curl -fsSL https://raw.githubusercontent.com/CIXMEDTECH/Vespera-Agent/main/scripts/install.sh | sudo bash -s -- --version v${{ needs.version.outputs.version }} -e <panel-url> -t <token>
             ```
