@@ -56,11 +56,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      # A venv: system Python refuses pip installs, and the runner keeps its state between jobs.
+      # uv, not pip or python3 -m venv: the runner's system Python has neither pip
+      # access nor ensurepip, and it keeps its state between jobs.
+      - uses: astral-sh/setup-uv@v10.3.3
       - name: Install zig and cargo-zigbuild
         run: |
-          python3 -m venv "$RUNNER_TEMP/zig"
-          "$RUNNER_TEMP/zig/bin/pip" install ziglang==0.17.0 cargo-zigbuild
+          uv venv "$RUNNER_TEMP/zig"
+          uv pip install --python "$RUNNER_TEMP/zig" ziglang==0.17.0 cargo-zigbuild
           echo "$RUNNER_TEMP/zig/bin" >> "$GITHUB_PATH"
       - name: Build
         env:
